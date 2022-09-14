@@ -17,19 +17,29 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
   def spec = suite("HttpMiddleware")(
     suite("metrics")(
       test("count requests") {
-        val app1  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
-          ZIO.succeed(Response.ok).delay(1 second)
-        }
-        val app2  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
-          ZIO.succeed(Response.ok).delay(1 millis)
+        def delayedApp(duration: Duration)  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
+          ZIO.succeed(Response.ok).delay(duration)
         }
         for {
-          _ <- runApp((app1) @@ metricsM)
-          _ <- runApp((app2) @@ metricsM)
+          _ <- runApp(delayedApp(1.second) @@ metricsM)
+          _ <- runApp(delayedApp(10.millis) @@ metricsM)
+          _ <- runApp(delayedApp(200.milli) @@ metricsM)
           count <- countAll.value
           durations <- requestDuration.value
+          _ <- ZIO.debug(durations.max)
           _ <- ZIO.debug(durations.buckets)
-        } yield assertTrue(count.count == 2)
+        } yield assertTrue(count.count == 3 && durations.max == 1000)
+      },
+      test("gauge concurrent requests") {
+        def delayedApp(duration: Duration)  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
+          ZIO.succeed(Response.ok).delay(duration)
+        }
+        for {
+          parallelRequests <- (runApp(delayedApp(3.second) @@ metricsM) zipPar runApp(delayedApp(3.second) @@ metricsM)).fork
+          _ <- ZIO.sleep(10.millis)
+          activeRequests <- concurrentRequests.value
+          _ <- parallelRequests.join
+        } yield assertTrue(activeRequests.value == 2)
       },
     ),
     suite("headers suite")(
