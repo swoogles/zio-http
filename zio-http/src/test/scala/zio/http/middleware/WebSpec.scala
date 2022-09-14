@@ -15,6 +15,14 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
   private val midB = Middleware.addHeader("X-Custom", "B")
 
   def spec = suite("HttpMiddleware")(
+    suite("metrics")(
+      test("count requests") {
+        for {
+          _ <- runApp(app @@ metricsM)
+          count <- ZIO.succeed(Unsafe.unsafe(countAll.unsafe.value()(_).count))
+        } yield assertTrue(count == 3)
+      },
+    ),
     suite("headers suite")(
       test("addHeaders") {
         val middleware = addHeaders(Headers("KeyA", "ValueA") ++ Headers("KeyB", "ValueB"))

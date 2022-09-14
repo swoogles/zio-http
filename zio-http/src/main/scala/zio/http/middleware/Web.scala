@@ -23,6 +23,20 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
   final def addCookieZIO[R, E](cookie: ZIO[R, E, Cookie[Response]]): HttpMiddleware[R, E] =
     patchZIO(_ => cookie.mapBoth(Option(_), c => Patch.addHeader(Headers.setCookie(c))))
 
+  import zio.metrics._
+
+  val countAll = Metric.counter("countAll").fromConst(1)
+  final def metricsM: HttpMiddleware[Any, IOException] =
+    interceptZIOPatch(req => Clock.nanoTime.map(start => (req.method, req.url, start)) @@ countAll) {
+      case (response, (method, url, start)) =>
+        for {
+          end <- Clock.nanoTime
+          _   <- Console
+            .printLine(s"${response.status.asJava.code()} ${method} ${url.encode} ${(end - start) / 1000000}ms")
+            .mapError(Option(_)) @@ countAll
+        } yield Patch.empty
+    }.mapZIO(r => ZIO.succeed(r) @@ countAll)
+
   /**
    * Add log status, method, url and time taken from req to res
    */
