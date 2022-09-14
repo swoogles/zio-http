@@ -31,14 +31,21 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
   private [http] val requestDuration: Metric[MetricKeyType.Histogram, Double, MetricState.Histogram] =
     Metric.histogram("requestDuration", Boundaries.exponential(4.0, 2, 10)).tagged(MetricLabel("x", "requestDuration"))// TODO Real label
 
-   private [http] val concurrentRequests = Metric.gauge("concurrentRequests")
+  val requestRef: Ref.Atomic[Int] = Ref.unsafe.make(0)(Unsafe.unsafe)
+
+  private [http] val concurrentRequests = Metric.gauge("concurrentRequests")
   private def incrementRequests =
-    concurrentRequests.value.flatMap(x => concurrentRequests.update(x.value + 1))
+    requestRef.updateAndGet(_ + 1).flatMap { count =>
+      concurrentRequests.update(count.toDouble)
+    }
 
   private def decrementRequests =
-    concurrentRequests.value.flatMap(x => concurrentRequests.update(x.value - 1))
+    requestRef.updateAndGet(_ - 1).flatMap { count =>
+      concurrentRequests.update(count.toDouble)
+    }
 
-  final def metricsM: HttpMiddleware[Any, IOException] =
+
+  final val metricsM: HttpMiddleware[Any, IOException] =
     interceptZIOPatch(req => Clock.nanoTime.map(start => (req.method, req.url, start)) <* incrementRequests  @@ countAll) {
       case (response, (method, url, start)) =>
         for {
@@ -46,9 +53,9 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
           activeRequests <- concurrentRequests.value
           _ <- ZIO.debug("Active requests: " + activeRequests.value)
           _ <- ZIO.succeed(((end - start)/ 1000000).toDouble) @@ requestDuration
-          _   <- ZIO.succeed( s"${response.status.asJava.code()} ${method} ${url.encode} ${(end - start) / 1000000}ms")
+          _   <- ZIO.succeed( s"${response.status.asJava.code()} ${method} ${url.encode} ${(end - start) / 1000000}ms") <* decrementRequests
         } yield Patch.empty
-    }.mapZIO(r => ZIO.succeed(r) <* decrementRequests ) // TODO Delete if there's nothing to track at the end of the logic
+    } //.mapZIO(r => ZIO.succeed(r) <* decrementRequests ) // TODO Delete if there's nothing to track at the end of the logic
 
   /**
    * Add log status, method, url and time taken from req to res

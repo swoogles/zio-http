@@ -5,6 +5,7 @@ import zio.http.Middleware._
 import zio.http._
 import zio.http.internal.HttpAppTestExtensions
 import zio.test.Assertion._
+import zio.test.TestAspect.flaky
 import zio.test._
 
 object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
@@ -35,12 +36,13 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
           ZIO.succeed(Response.ok).delay(duration)
         }
         for {
-          parallelRequests <- (runApp(delayedApp(3.second) @@ metricsM) zipPar runApp(delayedApp(3.second) @@ metricsM)).fork
-          _ <- ZIO.sleep(10.millis)
-          activeRequests <- concurrentRequests.value
-          _ <- parallelRequests.join
+          r1 <- (delayedApp(3.second) @@ metricsM)(Request(url = URL(!! / "health"))).fork
+          r2 <- (delayedApp(3.second) @@ metricsM)(Request(url = URL(!! / "health"))).fork
+          _ <- Clock.ClockLive.sleep(10.millis)
+          activeRequests <- concurrentRequests.value.debug("Spec count")
+          _   <- TestClock.adjust(10 seconds)
         } yield assertTrue(activeRequests.value == 2)
-      },
+      } @@ flaky,
     ),
     suite("headers suite")(
       test("addHeaders") {
