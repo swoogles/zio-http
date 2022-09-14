@@ -5,6 +5,8 @@ import zio.http.URL.encode
 import zio.http._
 import zio.http.headers.HeaderModifier
 import zio.http.middleware.Web.{PartialInterceptPatch, PartialInterceptZIOPatch}
+import zio.metrics.MetricKeyType.Counter
+import zio.metrics.MetricKeyType.Histogram.Boundaries
 
 import java.io.IOException
 
@@ -25,15 +27,17 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
 
   import zio.metrics._
 
-  val countAll = Metric.counter("countAll").fromConst(1)
+  val countAll: Metric[Counter, Any, MetricState.Counter] = Metric.counter("countAll").fromConst(1)
+  val requestDuration: Metric[MetricKeyType.Histogram, Double, MetricState.Histogram] =
+    Metric.histogram("requestDuration", Boundaries.exponential(4.0, 2, 10)).tagged(MetricLabel("x", "requestDuration"))// TODO Real label
   final def metricsM: HttpMiddleware[Any, IOException] =
     interceptZIOPatch(req => Clock.nanoTime.map(start => (req.method, req.url, start)) @@ countAll) {
       case (response, (method, url, start)) =>
         for {
           end <- Clock.nanoTime
-          _   <- Console
-            .printLine(s"${response.status.asJava.code()} ${method} ${url.encode} ${(end - start) / 1000000}ms")
-            .mapError(Option(_)) @@ countAll
+          duration <- ZIO.succeed(((end - start)/ 1000000).toDouble) @@ requestDuration
+          _   <- ZIO.debug(
+            s"${response.status.asJava.code()} ${method} ${url.encode} ${(end - start) / 1000000}ms")
         } yield Patch.empty
     }.mapZIO(r => ZIO.succeed(r) @@ countAll)
 

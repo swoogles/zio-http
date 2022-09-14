@@ -17,10 +17,19 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
   def spec = suite("HttpMiddleware")(
     suite("metrics")(
       test("count requests") {
+        val app1  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
+          ZIO.succeed(Response.ok).delay(1 second)
+        }
+        val app2  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
+          ZIO.succeed(Response.ok).delay(1 millis)
+        }
         for {
-          _ <- runApp(app @@ metricsM)
-          count <- ZIO.succeed(Unsafe.unsafe(countAll.unsafe.value()(_).count))
-        } yield assertTrue(count == 3)
+          _ <- runApp((app1) @@ metricsM)
+          _ <- runApp((app2) @@ metricsM)
+          count <- countAll.value
+          durations <- requestDuration.value
+          _ <- ZIO.debug(durations.buckets)
+        } yield assertTrue(count.count == 2)
       },
     ),
     suite("headers suite")(
