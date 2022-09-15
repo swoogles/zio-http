@@ -20,13 +20,14 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
   def spec = suite("HttpMiddleware")(
     suite("metrics")(
       test("count requests") {
+        val localMetrics = metricsM(MetricLabel("test", "count"))
         def delayedApp(duration: Duration)  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
           ZIO.succeed(Response.ok).delay(duration)
         }
         for {
-          _ <- runApp(delayedApp(1.second) @@ metricsM(MetricLabel("test", "count")))
-          _ <- runApp(delayedApp(10.millis) @@ metricsM(MetricLabel("test", "count")))
-          _ <- runApp(delayedApp(200.milli) @@ metricsM(MetricLabel("test", "count")))
+          _ <- runApp(delayedApp(1.second) @@ localMetrics)
+          _ <- runApp(delayedApp(10.millis) @@ localMetrics)
+          _ <- runApp(delayedApp(200.milli) @@ localMetrics)
           count <- Metric.counter("totalRequests").tagged(MetricLabel("test", "count")).value
           durations <- requestDuration.value
           _ <- ZIO.debug(durations.max)
@@ -34,18 +35,21 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
         } yield assertTrue(count.count == 3 && durations.max == 1000)
       },
       test("count response codes") {
+        val localMetrics = metricsM(MetricLabel("test", "responseCodeTracking"))
+        val localCounter = Metric.counter("responses")
+            .tagged(MetricLabel("test", "responseCodeTracking"))
+
         def app(response: Response)  =
           Http.collectZIO[Request] { case _ =>
             ZIO.succeed(response)
-          }
+          } @@ localMetrics
         for {
-          _ <- runApp(app(Response.ok) @@ metricsM(MetricLabel("test", "responseCodeTracking")))
-          _ <- runApp(app(Response.fromHttpError(HttpError.InternalServerError("No good"))) @@ metricsM(MetricLabel("test", "responseCodeTracking")))
-          _ <- runApp(app(Response.ok) @@ metricsM(MetricLabel("test", "responseCodeTracking")))
-          _ <- runApp(app(Response.redirect("newLocation")) @@ metricsM(MetricLabel("test", "responseCodeTracking")))
+          _ <- runApp(app(Response.ok))
+          _ <- runApp(app(Response.fromHttpError(HttpError.InternalServerError("No good"))))
+          _ <- runApp(app(Response.ok))
+          _ <- runApp(app(Response.redirect("newLocation")))
           //          _ <- MetricClient.
-          okResponses <- Metric.counter("responses")
-            .tagged(MetricLabel("test", "responseCodeTracking"))
+          okResponses <- localCounter
             .tagged("ResponseCode", Ok.toString)
             .value
           internalServerErrorResponses <- Metric.counter("responses")

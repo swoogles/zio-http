@@ -43,31 +43,19 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
     }
 
 
-  final val metricsM: HttpMiddleware[Any, IOException] =
-    interceptZIOPatch(req => Clock.nanoTime.map(start => (req.method, req.url, start)) <* incrementRequests  @@ Metric.counter("totalRequests").fromConst(1)) {
+  // Worth being lazy?
+  lazy val metricsM: HttpMiddleware[Any, IOException] =
+    metricsM()
+
+  final def metricsM(labels: MetricLabel*): HttpMiddleware[Any, IOException] =
+    interceptZIOPatch(req => Clock.nanoTime.map(start => (req.method, req.url, start)) <* incrementRequests  @@ Metric.counter("totalRequests").tagged(labels.toSet).fromConst(1)) {
       case (response, (method, url, start)) =>
         for {
           end <- Clock.nanoTime
-          activeRequests <- concurrentRequests.value
-
-//          _ <- ZIO.debug("Active requests: " + activeRequests.value)
-          _ <- ZIO.succeed(((end - start)/ 1000000).toDouble) @@ requestDuration @@ Metric.counter("responses").fromConst(1L).tagged("ResponseCode",  response.status.toString)
+          _ <- ZIO.succeed(((end - start)/ 1000000).toDouble) @@ requestDuration @@ Metric.counter("responses").fromConst(1L).tagged(labels.toSet).tagged("ResponseCode",  response.status.toString)
           _   <- ZIO.succeed( s"${response.status.asJava.code()} ${method} ${url.encode} ${(end - start) / 1000000}ms") <* decrementRequests
         } yield Patch.empty
-    } //.mapZIO(r => ZIO.succeed(r) <* decrementRequests ) // TODO Delete if there's nothing to track at the end of the logic
-
-  final def metricsM(label: MetricLabel, labels: MetricLabel*): HttpMiddleware[Any, IOException] =
-    interceptZIOPatch(req => Clock.nanoTime.map(start => (req.method, req.url, start)) <* incrementRequests  @@ Metric.counter("totalRequests").tagged(label, labels:_*).fromConst(1)) {
-      case (response, (method, url, start)) =>
-        for {
-          end <- Clock.nanoTime
-          activeRequests <- concurrentRequests.value
-
-          //          _ <- ZIO.debug("Active requests: " + activeRequests.value)
-          _ <- ZIO.succeed(((end - start)/ 1000000).toDouble) @@ requestDuration @@ Metric.counter("responses").fromConst(1L).tagged(label, labels:_*).tagged("ResponseCode",  response.status.toString)
-          _   <- ZIO.succeed( s"${response.status.asJava.code()} ${method} ${url.encode} ${(end - start) / 1000000}ms") <* decrementRequests
-        } yield Patch.empty
-    } //.mapZIO(r => ZIO.succeed(r) <* decrementRequests ) // TODO Delete if there's nothing to track at the end of the logic
+    }
 
   /**
    * Add log status, method, url and time taken from req to res
