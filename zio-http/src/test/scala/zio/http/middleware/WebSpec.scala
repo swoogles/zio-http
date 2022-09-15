@@ -20,20 +20,18 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
   def spec = suite("HttpMiddleware")(
     suite("metrics")(
       test("count requests") {
-        val localLabel                     = MetricLabel("test", "count requests")
-        val app = (Http.ok @@ metricsM(localLabel))(Request())
+        val tags                     = Set(MetricLabel("test", "count requests"))
+        val app = (Http.ok @@ metricsM(tags))(Request())
         for {
           _     <- app.repeatN(2)
-          count <- Metric.counter("totalRequests").tagged(localLabel).value
+          count <- Metric.counter("totalRequests").tagged(tags).value
         } yield assertTrue(count.count == 3)
       },
       test("track response times histogram") {
-        val localLabel                     = MetricLabel("test", "response times")
-        val localMetrics                   = metricsM(localLabel)
-
+        val tags                     = Set(MetricLabel("test", "response times"))
         def delayedApp(duration: Duration) =
           for {
-            process <- (Http.ok.delay(duration) @@ localMetrics)(Request()).fork
+            process <- (Http.ok.delay(duration) @@ metricsM(tags))(Request()).fork
             _   <- TestClock.adjust(10 seconds)
             _ <- process.join
           } yield ()
@@ -42,20 +40,19 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
           _         <- delayedApp(1.second)
           _         <- delayedApp(10.millis)
           _         <- delayedApp(200.millis)
-          durations <- requestDuration.value
+          durations <- requestDuration(tags).value // TODO Stop grabbing like this. Maybe.
           _         <- ZIO.debug(durations.max)
           _         <- ZIO.debug(durations.buckets)
         } yield assertTrue(durations.max == 1000)
       },
       test("count response codes") {
-        val label        = MetricLabel("test", "responseCodeTracking")
-        val localMetrics = metricsM(label)
+        val label        = Set(MetricLabel("test", "responseCodeTracking"))
         val localCounter = Metric
           .counter("responses")
           .tagged(label)
 
         def app(response: Response) =
-          Http(response) @@ localMetrics
+          Http(response) @@ metricsM(label)
 
         for {
           _                            <- runApp(app(Response.ok))
@@ -71,7 +68,7 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
         } yield assertTrue(okResponses.count == 2 && internalServerErrorResponses.count == 1)
       },
       test("gauge concurrent requests") {
-        val label        = MetricLabel("test", "gauge inflightRequests")
+        val label        = Set(MetricLabel("test", "gauge inflightRequests"))
         def delayedApp(duration: Duration) = (Http.ok.delay(duration) @@ metricsM(label))(Request(url = URL(!! / "health")))
 
         for {

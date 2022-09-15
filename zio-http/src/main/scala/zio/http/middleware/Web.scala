@@ -27,44 +27,44 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
   import zio.metrics._
 
   // TODO Parameterize boundaries
-  private[http] val requestDuration: Metric[MetricKeyType.Histogram, Double, MetricState.Histogram] =
+  private[http] def requestDuration(labels: Set[MetricLabel]): Metric[MetricKeyType.Histogram, Double, MetricState.Histogram] =
     Metric
       .histogram("requestDuration", Boundaries.exponential(4.0, 2, 10)) // TODO make Boundaries a parameter?
-      .tagged(MetricLabel("x", "requestDuration"))                      // TODO Real label
+      .tagged(labels)
 
   private val requestRef: Ref.Atomic[Int] = Ref.unsafe.make(0)(Unsafe.unsafe)
 
-  private[http] val concurrentRequests = Metric.gauge("inflightRequests")
+  private[http] def concurrentRequests(labels: Set[MetricLabel]) = Metric.gauge("inflightRequests").tagged(labels)
   private def incrementRequests(labels: Set[MetricLabel])        =
     requestRef.updateAndGet(_ + 1).flatMap { count =>
-      concurrentRequests.tagged(labels).update(count.toDouble)
+      concurrentRequests(labels).update(count.toDouble)
     }
 
   private def decrementRequests(labels: Set[MetricLabel]) =
     requestRef.updateAndGet(_ - 1).flatMap { count =>
-      concurrentRequests.tagged(labels).update(count.toDouble)
+      concurrentRequests(labels).update(count.toDouble)
     }
 
   // Worth being lazy?
   lazy val metricsM: HttpMiddleware[Any, IOException] =
-    metricsM()
+    metricsM(Set())
 
-  final def metricsM(labels: MetricLabel*): HttpMiddleware[Any, IOException] =
+  final def metricsM(labels: Set[MetricLabel]): HttpMiddleware[Any, IOException] =
     interceptZIOPatch(req =>
-      Clock.nanoTime.map(start => (req.method, req.url, start)) <* incrementRequests(labels.toSet) @@ Metric
+      Clock.nanoTime.map(start => (req.method, req.url, start)) <* incrementRequests(labels) @@ Metric
         .counter("totalRequests")
-        .tagged(labels.toSet)
+        .tagged(labels)
         .fromConst(1),
     ) { case (response, (method@_, url@_, start)) =>
       for {
         end <- Clock.nanoTime
         // TODO metrics for url?
         // TODO Can I wield Metric.timer instead? Not sure where exactly to tack it on.
-        _   <- (ZIO.succeed(((end - start) / 1000000).toDouble) @@ requestDuration @@ Metric
+        _   <- (ZIO.succeed(((end - start) / 1000000).toDouble) @@ requestDuration(labels) @@ Metric
           .counter("responses")
           .fromConst(1L)
-          .tagged(labels.toSet)
-          .tagged("ResponseCode", response.status.toString)) <* decrementRequests(labels.toSet)
+          .tagged(labels)
+          .tagged("ResponseCode", response.status.toString)) <* decrementRequests(labels)
       } yield Patch.empty
     }
 
