@@ -54,8 +54,7 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
           end <- Clock.nanoTime
           activeRequests <- concurrentRequests.value
 //          _ <- ZIO.debug("Active requests: " + activeRequests.value)
-          _ <- ZIO.debug(1L) @@ responseCounter.tagged("ResponseCode",  response.status.toString)
-          _ <- ZIO.succeed(((end - start)/ 1000000).toDouble) @@ requestDuration
+          _ <- ZIO.succeed(((end - start)/ 1000000).toDouble) @@ requestDuration @@ responseCounter.tagged("ResponseCode",  response.status.toString)
           _   <- ZIO.succeed( s"${response.status.asJava.code()} ${method} ${url.encode} ${(end - start) / 1000000}ms") <* decrementRequests
         } yield Patch.empty
     } //.mapZIO(r => ZIO.succeed(r) <* decrementRequests ) // TODO Delete if there's nothing to track at the end of the logic
