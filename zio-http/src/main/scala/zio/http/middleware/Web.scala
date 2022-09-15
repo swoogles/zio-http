@@ -28,6 +28,8 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
   import zio.metrics._
 
   private [http] val countAll: Metric[Counter, Any, MetricState.Counter] = Metric.counter("countAll").fromConst(1)
+
+  private [http] val responseCounter = Metric.counter("responses").fromConst(1L)
   private [http] val requestDuration: Metric[MetricKeyType.Histogram, Double, MetricState.Histogram] =
     Metric.histogram("requestDuration", Boundaries.exponential(4.0, 2, 10)).tagged(MetricLabel("x", "requestDuration"))// TODO Real label
 
@@ -51,7 +53,8 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
         for {
           end <- Clock.nanoTime
           activeRequests <- concurrentRequests.value
-          _ <- ZIO.debug("Active requests: " + activeRequests.value)
+//          _ <- ZIO.debug("Active requests: " + activeRequests.value)
+          _ <- ZIO.debug(1L) @@ responseCounter.tagged("ResponseCode",  response.status.toString)
           _ <- ZIO.succeed(((end - start)/ 1000000).toDouble) @@ requestDuration
           _   <- ZIO.succeed( s"${response.status.asJava.code()} ${method} ${url.encode} ${(end - start) / 1000000}ms") <* decrementRequests
         } yield Patch.empty

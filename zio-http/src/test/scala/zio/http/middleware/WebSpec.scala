@@ -2,8 +2,10 @@ package zio.http.middleware
 
 import zio._
 import zio.http.Middleware._
+import zio.http.Status.Ok
 import zio.http._
 import zio.http.internal.HttpAppTestExtensions
+import zio.metrics.Metric
 import zio.test.Assertion._
 import zio.test.TestAspect.flaky
 import zio.test._
@@ -30,6 +32,23 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
           _ <- ZIO.debug(durations.max)
           _ <- ZIO.debug(durations.buckets)
         } yield assertTrue(count.count == 3 && durations.max == 1000)
+      },
+      test("count response codes") {
+        def delayedApp(duration: Duration)  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
+          ZIO.succeed(Response.ok).delay(duration)
+        }
+        for {
+          _ <- runApp(delayedApp(1.second) @@ metricsM)
+          _ <- runApp(delayedApp(10.millis) @@ metricsM)
+          _ <- runApp(delayedApp(200.milli) @@ metricsM)
+//          _ <- MetricClient.
+          state <- Metric.counter("responses")
+            .tagged("ResponseCode", Ok.toString)
+            .value
+            .debug("Counter status")
+//          count <- responseCounter.tagged("ResponseCode", Ok.toString).value.debug("Count")
+//          count <- countAll.value
+        } yield assertTrue(state.count == 3)
       },
       test("gauge concurrent requests") {
         def delayedApp(duration: Duration)  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
