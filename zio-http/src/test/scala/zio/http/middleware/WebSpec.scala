@@ -20,54 +20,65 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
   def spec = suite("HttpMiddleware")(
     suite("metrics")(
       test("count requests") {
-        val localMetrics = metricsM(MetricLabel("test", "count"))
-        def delayedApp(duration: Duration)  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
-          ZIO.succeed(Response.ok).delay(duration)
-        }
+        val localLabel                     = MetricLabel("test", "count requests")
+        val app = (Http.ok @@ metricsM(localLabel))(Request())
         for {
-          _ <- runApp(delayedApp(1.second) @@ localMetrics)
-          _ <- runApp(delayedApp(10.millis) @@ localMetrics)
-          _ <- runApp(delayedApp(200.milli) @@ localMetrics)
-          count <- Metric.counter("totalRequests").tagged(MetricLabel("test", "count")).value
+          _     <- app.repeatN(2)
+          count <- Metric.counter("totalRequests").tagged(localLabel).value
+        } yield assertTrue(count.count == 3)
+      },
+      test("track response times histogram") {
+        val localLabel                     = MetricLabel("test", "response times")
+        val localMetrics                   = metricsM(localLabel)
+
+        def delayedApp(duration: Duration) =
+          for {
+            process <- (Http.ok.delay(duration) @@ localMetrics)(Request()).fork
+            _   <- TestClock.adjust(10 seconds)
+            _ <- process.join
+          } yield ()
+
+        for {
+          _         <- delayedApp(1.second)
+          _         <- delayedApp(10.millis)
+          _         <- delayedApp(200.millis)
           durations <- requestDuration.value
-          _ <- ZIO.debug(durations.max)
-          _ <- ZIO.debug(durations.buckets)
-        } yield assertTrue(count.count == 3 && durations.max == 1000)
+          _         <- ZIO.debug(durations.max)
+          _         <- ZIO.debug(durations.buckets)
+        } yield assertTrue(durations.max == 1000)
       },
       test("count response codes") {
-        val localMetrics = metricsM(MetricLabel("test", "responseCodeTracking"))
-        val localCounter = Metric.counter("responses")
-            .tagged(MetricLabel("test", "responseCodeTracking"))
+        val label        = MetricLabel("test", "responseCodeTracking")
+        val localMetrics = metricsM(label)
+        val localCounter = Metric
+          .counter("responses")
+          .tagged(label)
 
-        def app(response: Response)  =
-          Http.collectZIO[Request] { case _ =>
-            ZIO.succeed(response)
-          } @@ localMetrics
+        def app(response: Response) =
+          Http(response) @@ localMetrics
+
         for {
-          _ <- runApp(app(Response.ok))
-          _ <- runApp(app(Response.fromHttpError(HttpError.InternalServerError("No good"))))
-          _ <- runApp(app(Response.ok))
-          _ <- runApp(app(Response.redirect("newLocation")))
-          //          _ <- MetricClient.
-          okResponses <- localCounter
+          _                            <- runApp(app(Response.ok))
+          _                            <- runApp(app(Response.fromHttpError(HttpError.InternalServerError("No good"))))
+          _                            <- runApp(app(Response.ok))
+          _                            <- runApp(app(Response.redirect("newLocation")))
+          okResponses                  <- localCounter
             .tagged("ResponseCode", Ok.toString)
             .value
-          internalServerErrorResponses <- Metric.counter("responses")
-            .tagged(MetricLabel("test", "responseCodeTracking"))
+          internalServerErrorResponses <- localCounter
             .tagged("ResponseCode", InternalServerError.toString)
             .value
         } yield assertTrue(okResponses.count == 2 && internalServerErrorResponses.count == 1)
       },
       test("gauge concurrent requests") {
-        def delayedApp(duration: Duration)  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
-          ZIO.succeed(Response.ok).delay(duration)
-        }
+        val label        = MetricLabel("test", "gauge inflightRequests")
+        def delayedApp(duration: Duration) = (Http.ok.delay(duration) @@ metricsM(label))(Request(url = URL(!! / "health")))
+
         for {
-          r1 <- (delayedApp(1.second) @@ metricsM)(Request(url = URL(!! / "health"))).fork
-          r2 <- (delayedApp(1.second) @@ metricsM)(Request(url = URL(!! / "health"))).fork
-          _ <- Clock.ClockLive.sleep(10.millis)
-          activeRequests <- concurrentRequests.value.debug("Spec count")
-          _   <- TestClock.adjust(10 seconds)
+          _ <- ZIO.forkAllDiscard(List(1,2).map(_ => delayedApp(1.second)))
+          _              <- Clock.ClockLive.sleep(10.millis)
+          activeRequests <- Metric.gauge("inflightRequests").tagged(label).value
+          _              <- TestClock.adjust(10 seconds)
         } yield assertTrue(activeRequests.value == 2)
       } @@ flaky,
     ),
