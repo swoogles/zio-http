@@ -78,7 +78,7 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
           activeRequests <- Metric.gauge("inflightRequests").tagged(label).value
           _              <- TestClock.adjust(10 seconds)
         } yield assertTrue(activeRequests.value == 2)
-      } @@ flaky,
+      } @@ flaky, // TODO Ideally remove flakiness before merge
     ),
     suite("headers suite")(
       test("addHeaders") {

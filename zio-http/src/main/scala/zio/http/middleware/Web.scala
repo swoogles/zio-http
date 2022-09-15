@@ -26,7 +26,6 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
 
   import zio.metrics._
 
-  // TODO Parameterize boundaries
   private[http] def requestDuration(labels: Set[MetricLabel], requestTimingBoundaries: Boundaries): Metric[MetricKeyType.Histogram, Double, MetricState.Histogram] =
     Metric
       .histogram("requestDuration", requestTimingBoundaries) // TODO make Boundaries a parameter?
