@@ -2,7 +2,7 @@ package zio.http.middleware
 
 import zio._
 import zio.http.Middleware._
-import zio.http.Status.Ok
+import zio.http.Status.{InternalServerError, Ok}
 import zio.http._
 import zio.http.internal.HttpAppTestExtensions
 import zio.metrics.Metric
@@ -37,18 +37,22 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
         def delayedApp(duration: Duration)  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
           ZIO.succeed(Response.ok).delay(duration)
         }
+        def failApp(duration: Duration)  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
+          ZIO.succeed(Response.fromHttpError(HttpError.InternalServerError("No good"))).delay(duration)
+        }
         for {
           _ <- runApp(delayedApp(1.second) @@ metricsM)
           _ <- runApp(delayedApp(10.millis) @@ metricsM)
           _ <- runApp(delayedApp(200.milli) @@ metricsM)
+          _ <- runApp(failApp(200.milli) @@ metricsM)
 //          _ <- MetricClient.
-          state <- Metric.counter("responses")
+          okResponses <- Metric.counter("responses")
             .tagged("ResponseCode", Ok.toString)
             .value
-            .debug("Counter status")
-//          count <- responseCounter.tagged("ResponseCode", Ok.toString).value.debug("Count")
-//          count <- countAll.value
-        } yield assertTrue(state.count == 3)
+          internalServerErrorResponses <- Metric.counter("responses")
+            .tagged("ResponseCode", InternalServerError.toString)
+            .value
+        } yield assertTrue(okResponses.count == 3 && internalServerErrorResponses.count == 1)
       },
       test("gauge concurrent requests") {
         def delayedApp(duration: Duration)  = Http.collectZIO[Request] { case Method.GET -> !! / "health" =>
