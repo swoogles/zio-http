@@ -27,9 +27,9 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
   import zio.metrics._
 
   // TODO Parameterize boundaries
-  private[http] def requestDuration(labels: Set[MetricLabel]): Metric[MetricKeyType.Histogram, Double, MetricState.Histogram] =
+  private[http] def requestDuration(labels: Set[MetricLabel], requestTimingBoundaries: Boundaries): Metric[MetricKeyType.Histogram, Double, MetricState.Histogram] =
     Metric
-      .histogram("requestDuration", Boundaries.exponential(4.0, 2, 10)) // TODO make Boundaries a parameter?
+      .histogram("requestDuration", requestTimingBoundaries) // TODO make Boundaries a parameter?
       .tagged(labels)
 
   private val requestRef: Ref.Atomic[Int] = Ref.unsafe.make(0)(Unsafe.unsafe)
@@ -47,9 +47,9 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
 
   // Worth being lazy?
   lazy val metricsM: HttpMiddleware[Any, IOException] =
-    metricsM(Set())
+    metricsM()
 
-  final def metricsM(labels: Set[MetricLabel]): HttpMiddleware[Any, IOException] =
+  final def metricsM(labels: Set[MetricLabel] = Set.empty, requestTimingBoundaries: Boundaries = Boundaries.exponential(4.0, 2, 10)): HttpMiddleware[Any, IOException] =
     interceptZIOPatch(req =>
       Clock.nanoTime.map(start => (req.method, req.url, start)) <* incrementRequests(labels) @@ Metric
         .counter("totalRequests")
@@ -60,7 +60,7 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
         end <- Clock.nanoTime
         // TODO metrics for url?
         // TODO Can I wield Metric.timer instead? Not sure where exactly to tack it on.
-        _   <- (ZIO.succeed(((end - start) / 1000000).toDouble) @@ requestDuration(labels) @@ Metric
+        _   <- (ZIO.succeed(((end - start) / 1000000).toDouble) @@ requestDuration(labels, requestTimingBoundaries) @@ Metric
           .counter("responses")
           .fromConst(1L)
           .tagged(labels)

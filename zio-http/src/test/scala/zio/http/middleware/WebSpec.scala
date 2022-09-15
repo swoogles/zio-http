@@ -5,6 +5,7 @@ import zio.http.Middleware._
 import zio.http.Status.{InternalServerError, Ok}
 import zio.http._
 import zio.http.internal.HttpAppTestExtensions
+import zio.metrics.MetricKeyType.Histogram.Boundaries
 import zio.metrics.{Metric, MetricLabel}
 import zio.test.Assertion._
 import zio.test.TestAspect.flaky
@@ -31,19 +32,19 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
         val tags                     = Set(MetricLabel("test", "response times"))
         def delayedApp(duration: Duration) =
           for {
-            process <- (Http.ok.delay(duration) @@ metricsM(tags))(Request()).fork
+            process <- (Http.ok.delay(duration) @@ metricsM(tags, requestTimingBoundaries = Boundaries.linear(start = 10, width = 5, count = 3)))(Request()).fork
             _   <- TestClock.adjust(10 seconds)
             _ <- process.join
           } yield ()
 
         for {
           _         <- delayedApp(1.second)
-          _         <- delayedApp(10.millis)
+          _         <- delayedApp(5.millis)
           _         <- delayedApp(200.millis)
-          durations <- requestDuration(tags).value // TODO Stop grabbing like this. Maybe.
+          durations <- requestDuration(tags, Boundaries.linear(start = 10, width = 5, count = 3)).value
           _         <- ZIO.debug(durations.max)
           _         <- ZIO.debug(durations.buckets)
-        } yield assertTrue(durations.max == 1000)
+        } yield assertTrue(durations.buckets == Chunk((10.0,1L),(15.0,1L),(20.0,1L),(Double.MaxValue,3L)))
       },
       test("count response codes") {
         val label        = Set(MetricLabel("test", "responseCodeTracking"))
