@@ -5,7 +5,6 @@ import zio.http.URL.encode
 import zio.http._
 import zio.http.headers.HeaderModifier
 import zio.http.middleware.Web.{PartialInterceptPatch, PartialInterceptZIOPatch}
-import zio.metrics.MetricKeyType.Counter
 import zio.metrics.MetricKeyType.Histogram.Boundaries
 
 import java.io.IOException
@@ -27,9 +26,6 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
 
   import zio.metrics._
 
-  private [http] val countAll: Metric[Counter, Any, MetricState.Counter] = Metric.counter("countAll").fromConst(1)
-
-  private [http] val responseCounter = Metric.counter("responses").fromConst(1L)
   private [http] val requestDuration: Metric[MetricKeyType.Histogram, Double, MetricState.Histogram] =
     Metric.histogram("requestDuration", Boundaries.exponential(4.0, 2, 10)).tagged(MetricLabel("x", "requestDuration"))// TODO Real label
 
@@ -48,13 +44,27 @@ private[zio] trait Web extends Cors with Csrf with Auth with HeaderModifier[Http
 
 
   final val metricsM: HttpMiddleware[Any, IOException] =
-    interceptZIOPatch(req => Clock.nanoTime.map(start => (req.method, req.url, start)) <* incrementRequests  @@ countAll) {
+    interceptZIOPatch(req => Clock.nanoTime.map(start => (req.method, req.url, start)) <* incrementRequests  @@ Metric.counter("totalRequests").fromConst(1)) {
       case (response, (method, url, start)) =>
         for {
           end <- Clock.nanoTime
           activeRequests <- concurrentRequests.value
+
 //          _ <- ZIO.debug("Active requests: " + activeRequests.value)
-          _ <- ZIO.succeed(((end - start)/ 1000000).toDouble) @@ requestDuration @@ responseCounter.tagged("ResponseCode",  response.status.toString)
+          _ <- ZIO.succeed(((end - start)/ 1000000).toDouble) @@ requestDuration @@ Metric.counter("responses").fromConst(1L).tagged("ResponseCode",  response.status.toString)
+          _   <- ZIO.succeed( s"${response.status.asJava.code()} ${method} ${url.encode} ${(end - start) / 1000000}ms") <* decrementRequests
+        } yield Patch.empty
+    } //.mapZIO(r => ZIO.succeed(r) <* decrementRequests ) // TODO Delete if there's nothing to track at the end of the logic
+
+  final def metricsM(label: MetricLabel, labels: MetricLabel*): HttpMiddleware[Any, IOException] =
+    interceptZIOPatch(req => Clock.nanoTime.map(start => (req.method, req.url, start)) <* incrementRequests  @@ Metric.counter("totalRequests").tagged(label, labels:_*).fromConst(1)) {
+      case (response, (method, url, start)) =>
+        for {
+          end <- Clock.nanoTime
+          activeRequests <- concurrentRequests.value
+
+          //          _ <- ZIO.debug("Active requests: " + activeRequests.value)
+          _ <- ZIO.succeed(((end - start)/ 1000000).toDouble) @@ requestDuration @@ Metric.counter("responses").fromConst(1L).tagged(label, labels:_*).tagged("ResponseCode",  response.status.toString)
           _   <- ZIO.succeed( s"${response.status.asJava.code()} ${method} ${url.encode} ${(end - start) / 1000000}ms") <* decrementRequests
         } yield Patch.empty
     } //.mapZIO(r => ZIO.succeed(r) <* decrementRequests ) // TODO Delete if there's nothing to track at the end of the logic

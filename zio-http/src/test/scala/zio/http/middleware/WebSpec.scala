@@ -5,7 +5,7 @@ import zio.http.Middleware._
 import zio.http.Status.{InternalServerError, Ok}
 import zio.http._
 import zio.http.internal.HttpAppTestExtensions
-import zio.metrics.Metric
+import zio.metrics.{Metric, MetricLabel}
 import zio.test.Assertion._
 import zio.test.TestAspect.flaky
 import zio.test._
@@ -24,10 +24,10 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
           ZIO.succeed(Response.ok).delay(duration)
         }
         for {
-          _ <- runApp(delayedApp(1.second) @@ metricsM)
-          _ <- runApp(delayedApp(10.millis) @@ metricsM)
-          _ <- runApp(delayedApp(200.milli) @@ metricsM)
-          count <- countAll.value
+          _ <- runApp(delayedApp(1.second) @@ metricsM(MetricLabel("test", "count")))
+          _ <- runApp(delayedApp(10.millis) @@ metricsM(MetricLabel("test", "count")))
+          _ <- runApp(delayedApp(200.milli) @@ metricsM(MetricLabel("test", "count")))
+          count <- Metric.counter("totalRequests").tagged(MetricLabel("test", "count")).value
           durations <- requestDuration.value
           _ <- ZIO.debug(durations.max)
           _ <- ZIO.debug(durations.buckets)
@@ -39,15 +39,17 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
             ZIO.succeed(response)
           }
         for {
-          _ <- runApp(app(Response.ok) @@ metricsM)
-          _ <- runApp(app(Response.fromHttpError(HttpError.InternalServerError("No good"))) @@ metricsM)
-          _ <- runApp(app(Response.ok) @@ metricsM)
-          _ <- runApp(app(Response.redirect("newLocation")) @@ metricsM)
+          _ <- runApp(app(Response.ok) @@ metricsM(MetricLabel("test", "responseCodeTracking")))
+          _ <- runApp(app(Response.fromHttpError(HttpError.InternalServerError("No good"))) @@ metricsM(MetricLabel("test", "responseCodeTracking")))
+          _ <- runApp(app(Response.ok) @@ metricsM(MetricLabel("test", "responseCodeTracking")))
+          _ <- runApp(app(Response.redirect("newLocation")) @@ metricsM(MetricLabel("test", "responseCodeTracking")))
           //          _ <- MetricClient.
           okResponses <- Metric.counter("responses")
+            .tagged(MetricLabel("test", "responseCodeTracking"))
             .tagged("ResponseCode", Ok.toString)
             .value
           internalServerErrorResponses <- Metric.counter("responses")
+            .tagged(MetricLabel("test", "responseCodeTracking"))
             .tagged("ResponseCode", InternalServerError.toString)
             .value
         } yield assertTrue(okResponses.count == 2 && internalServerErrorResponses.count == 1)
@@ -57,8 +59,8 @@ object WebSpec extends ZIOSpecDefault with HttpAppTestExtensions { self =>
           ZIO.succeed(Response.ok).delay(duration)
         }
         for {
-          r1 <- (delayedApp(3.second) @@ metricsM)(Request(url = URL(!! / "health"))).fork
-          r2 <- (delayedApp(3.second) @@ metricsM)(Request(url = URL(!! / "health"))).fork
+          r1 <- (delayedApp(1.second) @@ metricsM)(Request(url = URL(!! / "health"))).fork
+          r2 <- (delayedApp(1.second) @@ metricsM)(Request(url = URL(!! / "health"))).fork
           _ <- Clock.ClockLive.sleep(10.millis)
           activeRequests <- concurrentRequests.value.debug("Spec count")
           _   <- TestClock.adjust(10 seconds)
