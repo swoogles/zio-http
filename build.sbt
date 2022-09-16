@@ -82,6 +82,7 @@ ThisBuild / githubWorkflowBuildPostamble :=
     ),
     scalas = List(Scala213),
   ).steps
+ThisBuild / resolvers ++= Resolver.sonatypeOssRepos("snapshots")
 
 lazy val root = (project in file("."))
   .settings(stdSettings("root"))
