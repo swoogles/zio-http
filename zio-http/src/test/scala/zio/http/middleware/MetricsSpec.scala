@@ -39,6 +39,22 @@ object MetricsSpec extends ZIOSpecDefault with HttpAppTestExtensions {
         assertTrue(totalDefectsCount == MetricState.Counter(1)) &&
         assertTrue(totalNotFoundCount == MetricState.Counter(1))
     },
+    test("http_requests_total with path label mapper") {
+      val app = Http
+        .ok @@ metrics(pathLabelMapper = {
+        case Method.GET -> !! / "user" / _ =>
+          "/user/:id"
+      }, extraLabels = Set(MetricLabel("test", "http_requests_total with path label mapper")))
+
+      val total   = Metric.counterInt("http_requests_total").tagged("test", "http_requests_total with path label mapper")
+      val totalOk = total.tagged("path", "/user/:id").tagged("method", "GET").tagged("status", "200")
+
+      for {
+        _ <- app(Request(method = Method.GET, url = URL(!! / "user" / "1")))
+        _ <- app(Request(method = Method.GET, url = URL(!! / "user" / "2")))
+        totalOkCount       <- totalOk.value
+      } yield assertTrue(totalOkCount == MetricState.Counter(2))
+    },
     test("http_request_duration_seconds") {
       val histogram = Metric
         .histogram(
