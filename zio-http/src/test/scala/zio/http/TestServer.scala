@@ -39,7 +39,7 @@ final case class TestServer[State](
    *   ).install ) }}}
    *
    * @return
-   *   The TestSever with new behavior.
+   *   The TestServer with new behavior.
    */
   def addRequestResponse(
     expectedRequest: Request,
@@ -65,7 +65,7 @@ final case class TestServer[State](
    *   The stateless behavior
    *
    * @return
-   *   The TestSever with new behavior.
+   *   The TestServer with new behavior.
    *
    * @example
    *   {{{
@@ -86,7 +86,7 @@ final case class TestServer[State](
    * @param pf
    *   Stateful behavior
    * @return
-   *   The TestSever with new behavior.
+   *   The TestServer with new behavior.
    *
    * @example
    *   {{{
