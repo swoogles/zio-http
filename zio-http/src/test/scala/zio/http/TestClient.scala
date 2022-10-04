@@ -8,9 +8,16 @@ case class Blah(x: Int) {
 }
 
 final case class TestClient[State](
-                              state: Ref[State],
-                              behavior: PartialFunction[(State, Request), (State, Response)],
-                            ) extends Client {
+  state: Ref[State],
+  behavior: PartialFunction[(State, Request), (State, Response)],
+) extends Client {
+
+  def addHandler(pf: PartialFunction[Request, Response]): TestClient[State] = {
+    val handler: PartialFunction[(State, Request), (State, Response)] = {
+      case (state, request) if pf.isDefinedAt(request) => (state, pf(request))
+    }
+    addHandlerState(handler)
+  }
 
   /**
    * Define stateful behavior for Client
@@ -30,11 +37,12 @@ final case class TestClient[State](
    *   }}}
    */
   def addHandlerState(
-                       pf: PartialFunction[(State, Request), (State, Response)],
-                     ): TestClient[State] =
-  // Can't call copy here, because it's a final def inside ZClient
+    pf: PartialFunction[(State, Request), (State, Response)],
+  ): TestClient[State] =
+    // Can't call copy here, because it's a final def inside ZClient
     new TestClient[State](
-      state, behavior.orElse(pf)
+      state,
+      behavior.orElse(pf),
     )
 
   override def headers: Headers =
@@ -66,7 +74,7 @@ final case class TestClient[State](
   )(implicit trace: Trace): ZIO[Any, Throwable, Response] = {
     val reconstructedRequest = Request(body, headers, method, URL(pathPrefix), version, remoteAddress = None)
 
-     state.modify(state1 => behavior((state1, reconstructedRequest)).swap)
+    state.modify(state1 => behavior((state1, reconstructedRequest)).swap)
 
   }
 
@@ -84,9 +92,12 @@ final case class TestClient[State](
 }
 
 object TestClient {
+
+  val make: ZIO[Scope, Throwable, TestClient[Unit]]                         =
+    make(())
   def make[State](initial: State): ZIO[Scope, Throwable, TestClient[State]] =
     for {
-      state  <- Ref.make(initial)
+      state <- Ref.make(initial)
     } yield TestClient(state, empty)
 
   private def empty[State]: PartialFunction[(State, Request), (State, Response)] = {
