@@ -17,6 +17,7 @@ object TestClientSpec extends ZIOSpecDefault {
               else
                 (state + 1, Response.status(Status.InternalServerError))
             })
+          // Note - to test code that relies on a Client, we have to manually pass it in now
           response1  <- testClient.request(Request.get(URL.root))
           response2  <- testClient.request(Request.get(URL.root))
         } yield assertTrue(response1.status == Status.Ok) && assertTrue(response2.status == Status.InternalServerError),
