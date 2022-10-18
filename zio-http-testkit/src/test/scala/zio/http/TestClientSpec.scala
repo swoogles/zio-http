@@ -21,8 +21,15 @@ object TestClientSpec extends ZIOSpecDefault {
           } yield assertTrue(goodResponse.status == Status.Ok) && assertTrue(badResponse.status == Status.NotFound) &&
                   assertTrue(goodResponse2.status == Status.Ok) && assertTrue(badResponse2.status == Status.Ok)
         },
-        test("addHandler")(
+        test("addHandler simple")(
           for {
+            _               <- TestClient.addHandler(request => ZIO.succeed(Response.ok))
+            response <- Client.request(Request.get(URL.root))
+          } yield assertTrue(response.status == Status.Ok),
+        ),
+        test("addHandler advanced")(
+          for {
+            // TODO Use state or something
             _               <- TestClient.addHandler(request => ZIO.succeed(Response.ok))
             response <- Client.request(Request.get(URL.root))
           } yield assertTrue(response.status == Status.Ok),
