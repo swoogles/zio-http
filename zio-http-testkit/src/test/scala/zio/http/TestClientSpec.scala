@@ -10,26 +10,31 @@ object TestClientSpec extends ZIOSpecDefault {
       suite("Happy Paths")(
         test("addRequestResponse"){
           val request = Request.get(URL.root)
+          val request2 = Request.get(URL(Path.decode("users")))
           for {
             _               <- TestClient.addRequestResponse(request, Response.ok)
             goodResponse <- Client.request(request)
-            badResponse <- Client.request(Request.get(URL(Path.decode("users"))))
-          } yield assertTrue(goodResponse.status == Status.Ok) && assertTrue(badResponse.status == Status.NotFound)
+            badResponse <- Client.request(request2)
+            _               <- TestClient.addRequestResponse(request2, Response.ok)
+            goodResponse2 <- Client.request(request)
+            badResponse2 <- Client.request(request2)
+          } yield assertTrue(goodResponse.status == Status.Ok) && assertTrue(badResponse.status == Status.NotFound) &&
+                  assertTrue(goodResponse2.status == Status.Ok) && assertTrue(badResponse2.status == Status.Ok)
         },
-//        test("addHandler")(
-//          for {
-//            _               <- TestClient.addHandler(request => ZIO.succeed(Response.ok))
-//            alteredResponse <- Client.request(Request.get(URL.root))
-//          } yield assertTrue(true),
-//        ),
+        test("addHandler")(
+          for {
+            _               <- TestClient.addHandler(request => ZIO.succeed(Response.ok))
+            response <- Client.request(Request.get(URL.root))
+          } yield assertTrue(response.status == Status.Ok),
+        ),
       ),
-//      suite("sad paths")(
-//        test("error when submitting a request to a blank TestServer")(
-//          for {
-//            initialErrorResponse <- Client.request(Request.get(URL.root)).flip
-//          } yield assertTrue(initialErrorResponse.getMessage.contains("Unhandled request:")),
-//        )
-//      )
+      suite("sad paths")(
+        test("error when submitting a request to a blank TestServer")(
+          for {
+            response <- Client.request(Request.get(URL.root))
+          } yield assertTrue(response.status == Status.NotFound),
+        )
+      )
     ).provide(TestClient.layer)
 
 }

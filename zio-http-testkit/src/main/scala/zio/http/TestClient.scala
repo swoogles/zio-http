@@ -9,7 +9,7 @@ case class TestClient(behavior: Ref[HttpApp[Any, Throwable]]) extends Client {
                           expectedRequest: Request,
                           response: Response,
                         ): ZIO[Any, Nothing, Unit] = {
-    val handler: PartialFunction[Request, ZIO[Any, Nothing, Response]] = {
+    val handler: PartialFunction[Request, ZIO[Any, Throwable, Response]] = {
 
       case realRequest if {
         // The way that the Client breaks apart and re-assembles the request prevents a straightforward
@@ -20,8 +20,9 @@ case class TestClient(behavior: Ref[HttpApp[Any, Throwable]]) extends Client {
       } =>
         ZIO.succeed(response)
 
-      case failure =>
-        ZIO.succeed(Response.status(Status.NotFound))
+//      case failure =>
+//        ZIO.fail(new Exception("Not found!"))
+//        ZIO.succeed(Response.status(Status.NotFound))
     }
     addHandler(handler)
   }
@@ -33,8 +34,8 @@ case class TestClient(behavior: Ref[HttpApp[Any, Throwable]]) extends Client {
       r                <- ZIO.environment[R]
       previousBehavior <- behavior.get
       newBehavior                  = pf.andThen(_.provideEnvironment(r))
-      app: HttpApp[Any, Throwable] = Http.fromFunctionZIO(newBehavior)
-      _ <- behavior.set(app <> previousBehavior)
+      app: HttpApp[Any, Throwable] = Http.collectZIO(newBehavior)
+      _ <- behavior.set(app ++ previousBehavior)
     } yield ()
 
   // TODO Use these in request/socket methods?
@@ -62,12 +63,10 @@ case class TestClient(behavior: Ref[HttpApp[Any, Throwable]]) extends Client {
       currentBehavior <- behavior.get
       request = Request(body = body, headers = headers, method = method, url = URL(pathPrefix, kind = URL.Location.Relative), version = version, remoteAddress = None)
       response <- currentBehavior(request)
-        .mapError {
-//          case blah =>
-//            println("Error: " + blah)
-//            new Exception(blah.toString)
-          case Some(value) => value
-          case None => new Exception("Unhandled request: " + request)
+        .catchAll {
+//        .mapError {
+          case Some(value) => ZIO.succeed(Response.status(Status.BadRequest))
+          case None => ZIO.succeed(Response.status(Status.NotFound)) // new Exception("Unhandled request: " + request)
         }
     } yield  response
 
