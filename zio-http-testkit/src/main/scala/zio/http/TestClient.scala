@@ -19,10 +19,6 @@ case class TestClient(behavior: Ref[HttpApp[Any, Throwable]]) extends Client {
           expectedRequest.headers.toSet.forall(expectedHeader => realRequest.headers.toSet.contains(expectedHeader))
       } =>
         ZIO.succeed(response)
-
-//      case failure =>
-//        ZIO.fail(new Exception("Not found!"))
-//        ZIO.succeed(Response.status(Status.NotFound))
     }
     addHandler(handler)
   }
@@ -35,7 +31,7 @@ case class TestClient(behavior: Ref[HttpApp[Any, Throwable]]) extends Client {
       previousBehavior <- behavior.get
       newBehavior                  = pf.andThen(_.provideEnvironment(r))
       app: HttpApp[Any, Throwable] = Http.collectZIO(newBehavior)
-      _ <- behavior.set(app ++ previousBehavior)
+      _ <- behavior.set(previousBehavior ++ app)
     } yield ()
 
   // TODO Use these in request/socket methods?
@@ -64,7 +60,6 @@ case class TestClient(behavior: Ref[HttpApp[Any, Throwable]]) extends Client {
       request = Request(body = body, headers = headers, method = method, url = URL(pathPrefix, kind = URL.Location.Relative), version = version, remoteAddress = None)
       response <- currentBehavior(request)
         .catchAll {
-//        .mapError {
           case Some(value) => ZIO.succeed(Response.status(Status.BadRequest))
           case None => ZIO.succeed(Response.status(Status.NotFound)) // new Exception("Unhandled request: " + request)
         }
