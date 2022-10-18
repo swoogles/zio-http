@@ -35,6 +35,13 @@ object TestClientSpec extends ZIOSpecDefault {
             response <- Client.request(Request.get(URL.root))
           } yield assertTrue(response.status == Status.Ok),
         ),
+        test("addHandler advanced")(
+          for {
+            // TODO Use state or something
+            _               <- TestClient.addHandler(request => ZIO.succeed(Response.ok))
+            response <- Client.request(Request.get(URL.root))
+          } yield assertTrue(response.status == Status.Ok),
+        ),
       ),
       suite("sad paths")(
         test("error when submitting a request to a blank TestServer")(
