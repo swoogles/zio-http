@@ -1,10 +1,30 @@
 package zio.http
 
 import zio._
-import zio.http.model.{Headers, Method, Scheme, Version}
+import zio.http.model.{Headers, Method, Scheme, Status, Version}
 import zio.http.socket.SocketApp
 
 case class TestClient(behavior: Ref[HttpApp[Any, Throwable]]) extends Client {
+  def addRequestResponse(
+                          expectedRequest: Request,
+                          response: Response,
+                        ): ZIO[Any, Nothing, Unit] = {
+    val handler: PartialFunction[Request, ZIO[Any, Nothing, Response]] = {
+
+      case realRequest if {
+        // The way that the Client breaks apart and re-assembles the request prevents a straightforward
+        //    expectedRequest == realRequest
+        expectedRequest.url.relative == realRequest.url &&
+          expectedRequest.method == realRequest.method &&
+          expectedRequest.headers.toSet.forall(expectedHeader => realRequest.headers.toSet.contains(expectedHeader))
+      } =>
+        ZIO.succeed(response)
+
+      case failure =>
+        ZIO.succeed(Response.status(Status.NotFound))
+    }
+    addHandler(handler)
+  }
 
   def addHandler[R](
     pf: PartialFunction[Request, ZIO[R, Throwable, Response]],
@@ -14,7 +34,7 @@ case class TestClient(behavior: Ref[HttpApp[Any, Throwable]]) extends Client {
       previousBehavior <- behavior.get
       newBehavior                  = pf.andThen(_.provideEnvironment(r))
       app: HttpApp[Any, Throwable] = Http.fromFunctionZIO(newBehavior)
-      _ <- behavior.set(previousBehavior ++ app)
+      _ <- behavior.set(app <> previousBehavior)
     } yield ()
 
   // TODO Use these in request/socket methods?
@@ -42,9 +62,12 @@ case class TestClient(behavior: Ref[HttpApp[Any, Throwable]]) extends Client {
       currentBehavior <- behavior.get
       request = Request(body = body, headers = headers, method = method, url = URL(pathPrefix, kind = URL.Location.Relative), version = version, remoteAddress = None)
       response <- currentBehavior(request)
-        .tapError(err => ZIO.debug("oof " + err))
-        .mapError { case Some(value) => value
-        case None => new Exception("Unhandled request: " + request)
+        .mapError {
+//          case blah =>
+//            println("Error: " + blah)
+//            new Exception(blah.toString)
+          case Some(value) => value
+          case None => new Exception("Unhandled request: " + request)
         }
     } yield  response
 
@@ -61,6 +84,12 @@ case class TestClient(behavior: Ref[HttpApp[Any, Throwable]]) extends Client {
 }
 
 object TestClient {
+  def addRequestResponse(
+                          request: Request,
+                          response: Response,
+                        ): ZIO[TestClient, Nothing, Unit] =
+    ZIO.serviceWithZIO[TestClient](_.addRequestResponse(request, response))
+
   def addHandler[R](
     pf: PartialFunction[Request, ZIO[R, Throwable, Response]],
   ): ZIO[R with TestClient, Nothing, Unit] =
