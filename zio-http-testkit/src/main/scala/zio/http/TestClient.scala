@@ -111,7 +111,12 @@ case class TestClient(behavior: Ref[HttpApp[Any, Throwable]]) extends Client {
     queries: QueryParams,
     schemeOption: Option[Scheme],
     version: Version,
-  )(implicit trace: Trace): ZIO[Env1 with Scope, Throwable, Response] = ???
+  )(implicit trace: Trace): ZIO[Env1 with Scope, Throwable, Response] =
+    ZIO.fail(new Exception("Need to put stuff in here"))
+
+  def addSocketApp[Env1](
+                        app: SocketApp[Env1],
+                      ): ZIO[Any, Nothing, Unit] = ???
 }
 
 object TestClient {
