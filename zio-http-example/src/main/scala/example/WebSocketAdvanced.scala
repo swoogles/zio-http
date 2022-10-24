@@ -18,8 +18,11 @@ object WebSocketAdvanced extends ZIOAppDefault {
 
   val messageSocket: Http[Any, Throwable, WebSocketChannelEvent, Unit] = messageFilter >>>
     Http.collectZIO[(WebSocketChannel, String)] {
-      case (ch, "end") => ch.close()
-      case (ch, text) if text.contains("end") => ch.close()
+      case (ch, text) if text.contains("end") =>
+        ZIO.debug("User text: " + text) *>
+        ch.writeAndFlush(WebSocketFrame.text("Ending at user's request."), await = true) *>
+        ZIO.debug("Ending connection") *>
+        ch.close()
 
       // Send a "bar" if the server sends a "foo"
       case (ch, "foo") => ch.writeAndFlush(WebSocketFrame.text("bar"))
@@ -33,7 +36,7 @@ object WebSocketAdvanced extends ZIOAppDefault {
       // And flushing it on the channel only once.
       case (ch, text) =>
         println("Unrecognized message: " + text)
-        (ch.write(WebSocketFrame.text(text)) *> ZIO.sleep(100.millis) *> ch.flush).repeatN(10) *> ch.writeAndFlush(WebSocketFrame.text("Ok. Done Spamming!"))
+        (ch.write(WebSocketFrame.text(text)) *> ZIO.sleep(100.millis) *> ch.flush).repeatN(2) *> ch.writeAndFlush(WebSocketFrame.text("Ok. Done Spamming!"))
     }
 
   val channelSocket: Http[Any, Throwable, WebSocketChannelEvent, Unit] =
