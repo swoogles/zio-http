@@ -2,8 +2,7 @@ package zio.http
 
 import zio._
 import zio.http.model.{Method, Status}
-import zio.http.ChannelEvent.{ChannelRead, ExceptionCaught, UserEvent, UserEventTriggered}
-import zio.http.model.{Headers, Status}
+import zio.http.ChannelEvent.{ChannelRead, , UserEvent, UserEventTriggered}
 import zio.http.socket.{SocketApp, SocketDecoder, SocketProtocol, WebSocketChannel, WebSocketChannelEvent, WebSocketFrame}
 import zio.test._
 
