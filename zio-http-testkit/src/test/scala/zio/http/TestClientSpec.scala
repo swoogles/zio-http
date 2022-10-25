@@ -2,7 +2,7 @@ package zio.http
 
 import zio._
 import zio.http.model.{Method, Status}
-import zio.http.ChannelEvent.{ChannelRead, , UserEvent, UserEventTriggered}
+import zio.http.ChannelEvent.{ChannelRead, UserEvent, UserEventTriggered}
 import zio.http.socket.{SocketApp, SocketDecoder, SocketProtocol, WebSocketChannel, WebSocketChannelEvent, WebSocketFrame}
 import zio.test._
 
@@ -61,7 +61,7 @@ object TestClientSpec extends ZIOSpecDefault {
          *    Apps should send messages back and forth until a predetermined end
          */
         test("happy path") {
-          val messageFilter: Http[Any, Nothing, WebSocketChannelEvent, (ChannelNetty[WebSocketFrame], String)] =
+          val messageFilter: Http[Any, Nothing, WebSocketChannelEvent, (ChannelT[WebSocketFrame], String)] =
             Http.collect[WebSocketChannelEvent] { case ChannelEvent(channel, ChannelRead(WebSocketFrame.Text(message))) =>
               (channel, message)
             }

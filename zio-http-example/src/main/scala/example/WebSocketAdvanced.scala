@@ -11,7 +11,7 @@ import zio.http.socket._
  *    websocat ws://127.0.0.1:8080/subscription
  */
 object WebSocketAdvanced extends ZIOAppDefault {
-  val messageFilter: Http[Any, Nothing, WebSocketChannelEvent, (ChannelNetty[WebSocketFrame], String)] =
+  val messageFilter: Http[Any, Nothing, WebSocketChannelEvent, (ChannelT[WebSocketFrame], String)] =
     Http.collect[WebSocketChannelEvent] { case ChannelEvent(channel, ChannelRead(WebSocketFrame.Text(message))) =>
       (channel, message)
     }

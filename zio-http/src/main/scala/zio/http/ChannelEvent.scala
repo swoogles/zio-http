@@ -8,7 +8,7 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace // scalafix:ok;
  * netty channel. `A` represents the inbound message type and `B` represents the
  * outbound message type that's allowed on the channel.
  */
-final case class ChannelEvent[-A, +B](channel: ChannelNetty[A], event: ChannelEvent.Event[B]) { self =>
+final case class ChannelEvent[-A, +B](channel: ChannelT[A], event: ChannelEvent.Event[B]) { self =>
   def contramap[A1](f: A1 => A): ChannelEvent[A1, B] = copy(channel = channel.contramap(f))
   def map[B1](f: B => B1): ChannelEvent[A, B1]       = copy(event = event.map(f))
 }
