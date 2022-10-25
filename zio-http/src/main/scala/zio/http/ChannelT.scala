@@ -1,7 +1,7 @@
 package zio.http
 import zio.{Task, Trace, UIO}
 
-trait ChannelT[-A] {
+trait Channel[-A] {
 
   /**
    * When set to `true` (default) it will automatically read messages from the
@@ -25,7 +25,7 @@ trait ChannelT[-A] {
    * Creates a new channel that can write a different type of message by using a
    * transformation function.
    */
-  def contramap[A1](f: A1 => A): ChannelT[A1]
+  def contramap[A1](f: A1 => A): Channel[A1]
 
   /**
    * Flushes the pending write operations on the channel.

@@ -12,7 +12,7 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace // scalafix:ok;
 final case class ChannelNetty[-A](
                                    private val channel: JChannel,
                                    private val convert: A => Any,
-                                 ) extends ChannelT[A] {
+                                 ) extends Channel[A] {
   self =>
 
   private def foreach[S](await: Boolean)(run: JChannel => JChannelFuture)(implicit trace: Trace): Task[Unit] = {

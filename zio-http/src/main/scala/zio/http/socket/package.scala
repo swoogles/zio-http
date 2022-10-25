@@ -5,7 +5,7 @@ package object socket {
   /**
    * A channel that allows websocket frames to be written to it.
    */
-  type WebSocketChannel = ChannelT[WebSocketFrame]
+  type WebSocketChannel = Channel[WebSocketFrame]
 
   /**
    * A channel that allows websocket frames to be read and write to it.
