@@ -61,7 +61,7 @@ object TestClientSpec extends ZIOSpecDefault {
          *    Apps should send messages back and forth until a predetermined end
          */
         test("happy path") {
-          val messageFilter: Http[Any, Nothing, WebSocketChannelEvent, (Channel[WebSocketFrame], String)] =
+          val messageFilter: Http[Any, Nothing, WebSocketChannelEvent, (ChannelNetty[WebSocketFrame], String)] =
             Http.collect[WebSocketChannelEvent] { case ChannelEvent(channel, ChannelRead(WebSocketFrame.Text(message))) =>
               (channel, message)
             }

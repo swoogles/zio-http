@@ -9,7 +9,7 @@ import zio.stacktracer.TracingImplicits.disableAutoTrace // scalafix:ok;
  * An immutable and type-safe representation of one or more netty channels. `A`
  * represents the type of messages that can be written on the channel.
  */
-final case class Channel[-A](
+final case class ChannelNetty[-A](
   private val channel: JChannel,
   private val convert: A => Any,
 ) {
@@ -45,7 +45,7 @@ final case class Channel[-A](
    * Creates a new channel that can write a different type of message by using a
    * transformation function.
    */
-  def contramap[A1](f: A1 => A): Channel[A1] = copy(convert = convert.compose(f))
+  def contramap[A1](f: A1 => A): ChannelNetty[A1] = copy(convert = convert.compose(f))
 
   /**
    * Flushes the pending write operations on the channel.
@@ -86,6 +86,6 @@ final case class Channel[-A](
   }
 }
 
-object Channel {
-  def make[A](channel: JChannel): Channel[A] = Channel(channel, identity)
+object ChannelNetty {
+  def make[A](channel: JChannel): ChannelNetty[A] = ChannelNetty(channel, identity)
 }
