@@ -20,18 +20,17 @@ import java.net.URI
 import java.nio.charset.{Charset, StandardCharsets, UnsupportedCharsetException}
 import java.time.ZonedDateTime
 import java.util.Base64
-
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.util.control.NonFatal
 import scala.util.matching.Regex
 import scala.util.{Either, Failure, Success, Try}
-
 import zio.Config.Secret
 import zio._
-
 import zio.http.codec.RichTextCodec
 import zio.http.internal.DateEncoding
+
+import java.util.regex.Pattern
 
 sealed trait Header {
   type Self <: Header
@@ -4146,18 +4145,8 @@ object Header {
 
     final case class Comment(comment: String) extends UserAgent
 
-    private val productRegex  = """(?i)([a-z0-9]+)(?:/([a-z0-9.]+))?""".r
-    private val commentRegex  = """(?i)\((.*)$""".r
-    private val completeRegex = s"""^(?i)([a-z0-9]+)(?:/([a-z0-9.]+))(.*)$$""".r
-
     def parse(userAgent: String): Either[String, UserAgent] = {
-      userAgent match {
-        case productRegex(name, version)           => Right(Product(name, Option(version)))
-        case commentRegex(comment)                 => Right(Comment(comment))
-        case completeRegex(name, version, comment) =>
-          Right(Complete(Product(name, Option(version)), Option(Comment(comment))))
-        case _                                     => Left("Invalid User-Agent header")
-      }
+        Right(Complete(Product("name", None), None))
     }
 
     def render(userAgent: UserAgent): String = userAgent match {
